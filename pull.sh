@@ -1,1 +1,1 @@
-git pull git@github.com:rarosu/fnulfs.git $1
+git pull git@github.com:rarosu/fnulfsd.git $1

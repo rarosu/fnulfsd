@@ -1,0 +1,7 @@
+# ignore binary files
+Build/
+Dist/
+.exe
+
+# ignore debug info
+memdmp.txt

@@ -2,3 +2,10 @@
 1350646212 source:c:\rarosu\dev\d\projects\fnulfsd\hello.d
 	<std/stdio.d>
 
+1350651507 source:c:\rarosu\dev\d\projects\fnulfsd\code\main.d
+	<std/stdio.d>
+	<std/string.d>
+	<std/file.d>
+	<std/stream.d>
+	<std/c/string.d>
+
