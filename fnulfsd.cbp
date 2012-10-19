@@ -26,7 +26,7 @@
 				</Compiler>
 			</Target>
 		</Build>
-		<Unit filename="hello.d" />
+		<Unit filename="Code\main.d" />
 		<Extensions>
 			<code_completion />
 			<debugger />
