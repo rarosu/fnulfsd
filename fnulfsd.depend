@@ -1,0 +1,4 @@
+# depslib dependency file v1.0
+1350646212 source:c:\rarosu\dev\d\projects\fnulfsd\hello.d
+	<std/stdio.d>
+

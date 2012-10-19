@@ -1,0 +1,45 @@
+FnulFS
+* Copy file data into its own array, and when done manipulating, write it back to the FS blocks.
+
+FnulFS treats all files as text files.
+
+First block data [512 byte]:
+    * Name [32 byte]
+    * Block count [1 byte]
+    * Flags [1 byte]
+    * Next block [1 byte]
+    * Previous block [1 byte]
+    * Byte count [2 byte]
+    * Data [474 byte]
+Arbitrary block data [512 byte]:
+    * Next block [1 byte]
+    * Previous block [1 byte]
+    * Byte count [2 byte]
+    * Data [498 byte]
+
+May have to add parent directory metadata to the first block of a file.
+
+We assume that a user can find the first block when opening a file, by placing the first block of the root directory at the first memory location.
+
+We need to know whether a block is not allocated!
+
+Directory file data [474 byte]:
+    * Parent Directory Block [1 byte]
+    * File count [1 byte]
+    * File list [472 byte]
+
+
+
+
+Requirements:
+    * Read files
+    * Write files
+    * Traverse filesystem
+    * View directory contents
+    * Associate filename with address
+
+
+TODO:
+    * Clarify block structure
+    * Make a File, FileWriter, FileReader abstraction, no block abstraction
+    * Copy file data into its own array, and when done manipulating, write it back to the FS blocks.
