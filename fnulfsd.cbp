@@ -26,7 +26,12 @@
 				</Compiler>
 			</Target>
 		</Build>
+		<Compiler>
+			<Add directory="Code" />
+		</Compiler>
+		<Unit filename="Code\filesystem.d" />
 		<Unit filename="Code\main.d" />
+		<Unit filename="Code\shell.d" />
 		<Extensions>
 			<code_completion />
 			<debugger />
