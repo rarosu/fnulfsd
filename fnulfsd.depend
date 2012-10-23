@@ -2,10 +2,19 @@
 1350646212 source:c:\rarosu\dev\d\projects\fnulfsd\hello.d
 	<std/stdio.d>
 
-1350651507 source:c:\rarosu\dev\d\projects\fnulfsd\code\main.d
+1351003489 source:c:\rarosu\dev\d\projects\fnulfsd\code\main.d
 	<std/stdio.d>
 	<std/string.d>
-	<std/file.d>
-	<std/stream.d>
-	<std/c/string.d>
+	<filesystem.d>
+	<shell.d>
+
+1351009277 c:\rarosu\dev\d\projects\fnulfsd\code\filesystem.d
+
+1351009250 c:\rarosu\dev\d\projects\fnulfsd\code\shell.d
+
+1351009250 source:c:\rarosu\dev\d\projects\fnulfsd\code\shell.d
+	<std/stdio.d>
+	<filesystem.d>
+
+1351003434 source:c:\rarosu\dev\d\projects\fnulfsd\code\filesystem.d
 
