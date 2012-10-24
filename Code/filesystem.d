@@ -28,6 +28,7 @@ struct DirectoryHeader {
 const ubyte FLAG_ALLOCATED = 0b00000001;
 const ubyte FLAG_DIRECTORY = 0b00000010;
 
+const Address E_FILE_NOT_FOUND = 254;
 const Address E_BLOCK_NOT_FOUND = 255;
 
 const uint BLOCK_COUNT = 250;
@@ -73,6 +74,8 @@ void create_block(Address a, Address previous, Address next) {
 
     bh_prev.next_block = a;
     bh_next.previous_block = a;
+
+    writefln("Creating block at address %d, with previous block %d and next block %d", a, previous, next);
 }
 
 /// create a new block and link it to an existing file
@@ -108,6 +111,15 @@ Address create_file(string name, Address parent) {
         fh.name = name[0..32];
     fh.parent_block = parent;
 
+    // update parent, only if not root
+    if (a != parent) {
+        DirectoryHeader* pdh = get_directory_ptr(parent);
+        ++pdh.file_count;
+
+        byte[] data = [a];
+        append(parent, data);
+    }
+
     return a;
 }
 
@@ -133,20 +145,73 @@ byte[] read_from_file(Address a) {
 
     result ~= fs_data[a][data_index .. data_index + bh.byte_count];
 
-    Address i = bh.next;
+    Address i = bh.next_block;
     while (i != a)  //traverse block linked list
     {
         bh = get_block_ptr(i);
         data_index = BlockHeader.sizeof;
         result ~= fs_data[i][data_index .. data_index + bh.byte_count];
-        i = bh.next;
+        i = bh.next_block;
     }
 
     return result;
 }
 
 void append(Address a, byte[] data) {
+    BlockHeader* bh = get_block_ptr(a);
 
+    ushort offset = BlockHeader.sizeof;
+    Address last = bh.previous_block;
+    if (last == a) {
+        offset += FileHeader.sizeof;
+        if ((bh.flags & FLAG_DIRECTORY) != 0)
+            offset += DirectoryHeader.sizeof;
+    }
+
+    bh = get_block_ptr(last);
+    offset += bh.byte_count;
+
+    writefln("Appending data \"%s\" on address %d at offset %d", cast(string)data, a, offset);
+
+    ushort bytes_appended = 0;
+    while (bytes_appended < data.length) {
+        ushort free_block_space = cast(ushort)(512 - offset);
+
+        int i = 0;
+        while (free_block_space != 0) {
+            if (bytes_appended == data.length)
+                break;
+            fs_data[last][offset + i] = data[bytes_appended];
+            ++i;
+            ++bytes_appended;
+            --free_block_space;
+        }
+
+        //fs_data[last][offset .. $] = data[bytes_appended .. bytes_appended + free_block_space];
+        //bytes_appended += free_block_space;
+        bh.byte_count += i;
+        if (bytes_appended < data.length) {
+            last = create_block(last, a);
+            offset = BlockHeader.sizeof;
+        }
+    }
+}
+
+Address find_file_by_name(string filename, Address directory) {
+    // truncate filename
+    if (filename.length > 32)
+        filename = filename[0 .. 32];
+
+    // iterate through all files in the directory
+    byte[] files = read_from_file(directory);
+    for (int i = 0; i < files.length; ++i) {
+        FileHeader* fh = get_file_ptr(files[i]);
+        if (fh.name[0 .. filename.length] == filename) {
+            return files[i];
+        }
+    }
+
+    return E_FILE_NOT_FOUND;
 }
 
 
