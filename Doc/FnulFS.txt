@@ -8,12 +8,12 @@ Block Header:
 	* Previous block [1 byte]
 	* Flags [1 byte]
 	* Byte count [2 byte]
-	Total: 4 byte
+	Total: 5 byte
 
 File Header:
 	* Name [32 byte]
 	* Parent block [1 byte]
-	Total: 34 byte
+	Total: 33 byte
 
 Directory Header:
 	* File count [1 byte]

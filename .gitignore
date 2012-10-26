@@ -5,4 +5,5 @@ Dist/
 
 # ignore debug info
 memdmp.txt
+memdmp2.txt
 *.bin

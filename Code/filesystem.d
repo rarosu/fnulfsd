@@ -5,9 +5,10 @@ import std.c.string;
 
 
 /+ STRUCTS & TYPEDEFS +/
-alias ubyte Address;
+alias ubyte Address;            // There can only be 250 blocks - one byte is sufficient
 
 
+// Contains the structure of the metadata that every block needs
 struct BlockHeader {
     Address next_block;
     Address previous_block;
@@ -15,19 +16,24 @@ struct BlockHeader {
     ushort byte_count;
 }
 
+// Contains the structure of the metadata that every file needs
 struct FileHeader {
-    char name[32];
+    char name[32];          // Design decision: Limit file names to 32 characters
     Address parent_block;
 }
 
+// Contains the structure of the metadata that every directory needs
+// To be deprecated in fnul fs 2.0
 struct DirectoryHeader {
     ubyte file_count;
 }
 
 /+ CONSTANTS +/
-const ubyte FLAG_ALLOCATED = 0b00000001;
-const ubyte FLAG_DIRECTORY = 0b00000010;
+const ubyte FLAG_ALLOCATED = 0b00000001;        // Set if a block is allocated
+const ubyte FLAG_DIRECTORY = 0b00000010;        // Set if a block is a directory
 
+// Error codes. Chosed as impossible addresses for convenience.
+const Address E_NOT_A_DIRECTORY = 253;
 const Address E_FILE_NOT_FOUND = 254;
 const Address E_BLOCK_NOT_FOUND = 255;
 
@@ -39,18 +45,21 @@ byte fs_data[BLOCK_COUNT][BLOCK_SIZE];
 
 
 /+ FUNCTIONS +/
+
 BlockHeader* get_block_ptr(Address a) {
     return cast(BlockHeader*)fs_data[a].ptr;
 }
 
 FileHeader* get_file_ptr(Address a) {
-    return cast(FileHeader*) (get_block_ptr(a) + BlockHeader.sizeof);
+
+    return cast(FileHeader*) (cast(ubyte*)(get_block_ptr(a)) + BlockHeader.sizeof);
 }
 
 DirectoryHeader* get_directory_ptr(Address a) {
-    return cast(DirectoryHeader*) (get_file_ptr(a) + FileHeader.sizeof);
+    return cast(DirectoryHeader*) (cast(ubyte*)(get_file_ptr(a)) + FileHeader.sizeof);
 }
 
+// Linearly iterate through the blocks to find a free one
 Address find_free_block() {
     for (Address i = 0; i < fs_data.length; ++i) {
         BlockHeader* bh = cast(BlockHeader*)fs_data[i].ptr;
@@ -74,8 +83,6 @@ void create_block(Address a, Address previous, Address next) {
 
     bh_prev.next_block = a;
     bh_next.previous_block = a;
-
-    writefln("Creating block at address %d, with previous block %d and next block %d", a, previous, next);
 }
 
 /// create a new block and link it to an existing file
@@ -109,6 +116,7 @@ Address create_file(string name, Address parent) {
         fh.name[0..name.length] = name;
     else
         fh.name = name[0..32];
+//    fh.name = name;
     fh.parent_block = parent;
 
     // update parent, only if not root
@@ -160,7 +168,7 @@ byte[] read_from_file(Address a) {
 void append(Address a, byte[] data) {
     BlockHeader* bh = get_block_ptr(a);
 
-    ushort offset = BlockHeader.sizeof;
+    ushort offset = BlockHeader.sizeof;         // Start writing data after the metadata.
     Address last = bh.previous_block;
     if (last == a) {
         offset += FileHeader.sizeof;
@@ -171,13 +179,11 @@ void append(Address a, byte[] data) {
     bh = get_block_ptr(last);
     offset += bh.byte_count;
 
-    writefln("Appending data \"%s\" on address %d at offset %d", cast(string)data, a, offset);
-
     ushort bytes_appended = 0;
     while (bytes_appended < data.length) {
         ushort free_block_space = cast(ushort)(512 - offset);
 
-        int i = 0;
+        ushort i = 0;
         while (free_block_space != 0) {
             if (bytes_appended == data.length)
                 break;
@@ -194,10 +200,41 @@ void append(Address a, byte[] data) {
             last = create_block(last, a);
             offset = BlockHeader.sizeof;
         }
+        bh = get_block_ptr(bh.next_block);
     }
 }
 
+// Since the file system can contain a maximum of 250 files, a directory file will never need more than one block.
+// Thus a simpler function without traversing blocks suffices
+void clear_directory_data(Address a) {
+    BlockHeader* bh = get_block_ptr(a);
+    DirectoryHeader* dh = get_directory_ptr(a);
+
+    bh.byte_count = 0;
+    memset(dh, 0, (512 - BlockHeader.sizeof - FileHeader.sizeof));
+}
+
+// Transform the name from a char array with fixed size to a string with the correct length
+string extract_filename(char[] name) {
+
+    string filename = cast(string)name;
+    int name_length = name.length;
+    for (int k = 0; k < name_length; ++k){
+        if (name[k] == 0){
+            name_length = k;
+            break;
+        }
+    }
+
+    filename.length = name_length;
+    return filename;
+}
+
 Address find_file_by_name(string filename, Address directory) {
+    BlockHeader* bh = get_block_ptr(directory);
+    if ((bh.flags & FLAG_DIRECTORY) == 0)
+        return E_NOT_A_DIRECTORY;
+
     // truncate filename
     if (filename.length > 32)
         filename = filename[0 .. 32];
@@ -206,12 +243,77 @@ Address find_file_by_name(string filename, Address directory) {
     byte[] files = read_from_file(directory);
     for (int i = 0; i < files.length; ++i) {
         FileHeader* fh = get_file_ptr(files[i]);
-        if (fh.name[0 .. filename.length] == filename) {
+        string candidate_filename = extract_filename(fh.name);
+
+        if (candidate_filename == filename) {
             return files[i];
         }
     }
 
     return E_FILE_NOT_FOUND;
+}
+
+Address find_directory_by_name(string dirname, Address directory){
+    Address a = find_file_by_name(dirname, directory);
+    if (a == E_FILE_NOT_FOUND)
+        return E_NOT_A_DIRECTORY;
+
+    BlockHeader* bh = get_block_ptr(a);
+    if ((bh.flags & FLAG_DIRECTORY) == 0)
+        return E_NOT_A_DIRECTORY;
+
+    return a;
+}
+
+Address find_file_from_path(string[] path, Address curdir) {
+    // Different cases of input:
+    //  /fnul/nest/xxx.txt/uuu.txt
+    // absolute path
+    //  '', 'fnul', 'nest', 'xxx.txt'
+    //
+    //  fnul/nest/xxx.txt
+    // relative path
+    // 'fnul','nest','xxx.txt'
+    //
+    // fnul
+    // 'fnul'
+    //
+    // /fnul/nest/
+    // '','fnul','nest',''
+
+    int start = 0;
+    if (path[start] == ""){
+        // absolute path
+        ++start;
+        curdir = 0;
+    }
+
+    // Check for trailing slashes
+    if (path[$ - 1] == "")
+        --path.length;
+
+    for (int i = start; i < path.length; ++i){
+        curdir = find_file_by_name(path[i], curdir);
+
+        // check if illegal path
+        if (curdir >= BLOCK_COUNT)
+            return curdir;
+    }
+
+    return curdir;
+}
+
+
+
+void rename(Address file, string newname) {
+    FileHeader* fh = get_file_ptr(file);
+
+    memset(fh.name.ptr, 0, fh.name.length * char.sizeof);
+
+    if (newname.length > 32)
+        fh.name = newname[0 .. 32];
+    else
+        fh.name[0 .. newname.length] = newname;
 }
 
 
@@ -223,13 +325,44 @@ void format() {
     create_directory("root", 0);
 }
 
+// Strictly debugging
 void memdmp(string filename) {
     File file = File(filename, "w");
 
-    for (int i = 0; i < BLOCK_COUNT; ++i) {
+    file.writefln("ushort.sizeof = %d", ushort.sizeof);
+    file.writefln("ubyte.sizeof = %d", ubyte.sizeof);
+    file.writeln();
+    file.writefln("Block header size: %d", BlockHeader.sizeof);
+    file.writefln("File header size: %d", FileHeader.sizeof);
+    file.writefln("Directory header size: %d", DirectoryHeader.sizeof);
+    file.writeln();
+    for (Address i = 0; i < BLOCK_COUNT; ++i) {
         file.writefln("Block %d", i);
-        file.write(fs_data[i]);
+
+        file.write(fs_data[i][0 .. BlockHeader.sizeof]);
         file.writeln();
+        file.write(fs_data[i][BlockHeader.sizeof .. BlockHeader.sizeof + FileHeader.sizeof]);
+        file.writeln();
+        file.write(fs_data[i][BlockHeader.sizeof + FileHeader.sizeof .. $]);
+        file.writeln();
+    }
+}
+
+// Strictly debugging2
+void memdmp2(string filename) {
+    File file = File(filename, "w");
+
+    for (Address i = 0; i < BLOCK_COUNT; ++i) {
+        BlockHeader* bh = get_block_ptr(i);
+        file.writefln("Block %d", i);
+        file.writeln(bh.next_block);
+        file.writeln(bh.previous_block);
+        file.writeln(bh.flags);
+        file.writeln(bh.byte_count);
+        file.writeln();
+        file.write(fs_data[i][BlockHeader.sizeof .. $]);
+        file.writeln();
+
     }
 }
 
@@ -238,8 +371,90 @@ void save_fs(string filename) {
     file.rawWrite(fs_data);
 }
 
-void load_fs(string filename) {
-    File file = File(filename, "rb");
-    file.rawRead(fs_data);
+bool load_fs(string filename) {
+    try {
+        File file = File(filename, "rb");
+        file.rawRead(fs_data);
+
+        return true;
+    } catch {
+        return false;
+    }
 }
 
+void delete_file(Address file){
+    // do not remove root directory.
+    if (file == 0)
+        return;
+
+    BlockHeader* bh = get_block_ptr(file);
+    if ((bh.flags & FLAG_DIRECTORY) != 0) {
+        byte[] files = read_from_file(file);
+        foreach (Address f; files) {
+            delete_file(f);
+        }
+    }
+
+    FileHeader* fh = get_file_ptr(file);
+
+
+    // Needs to update the parent directory file to exclude the deleted file
+    Address[] siblings = cast(Address[]) read_from_file(fh.parent_block);
+    int rem_index = 0;
+    for (int i = 0; i < siblings.length; ++i){
+        if (siblings[i] == file){
+            rem_index = i;
+            break;
+        }
+    }
+
+    siblings = siblings[0 .. rem_index] ~ siblings[rem_index + 1 .. $];
+    clear_directory_data(fh.parent_block);
+    append(fh.parent_block, cast(byte[]) siblings);
+
+    // The actual deletion
+    Address a = file;
+    do {
+        Address next = bh.next_block;
+        bh = get_block_ptr(next);
+        memset(fs_data[a].ptr, 0, BLOCK_SIZE * byte.sizeof);
+        a = next;
+    } while (a != file);
+
+}
+
+string[] extract_path(Address file){
+    string[] path;
+
+    while (file != 0){
+        FileHeader* fh = get_file_ptr(file);
+        path ~= extract_filename(fh.name);
+        file = fh.parent_block;
+    }
+
+    return path.reverse; // the path is extracted from the working directory and upwards, but typically written out the other way around
+}
+
+// Is recursive if a directory is passed as the source file
+Address copy(Address source_file, Address target_directory, string target_name) {
+    BlockHeader* bh = get_block_ptr(source_file);
+    FileHeader* fh = get_file_ptr(source_file);
+    Address target_file;
+
+    if ((bh.flags & FLAG_DIRECTORY) != 0) {
+        target_file = create_directory(target_name, target_directory);
+
+        Address[] files = cast(Address[]) read_from_file(source_file);
+
+        foreach (Address f; files) {
+            FileHeader* ffh = get_file_ptr(f);
+            string name = extract_filename(ffh.name);
+            copy(f, target_file, name);
+        }
+    } else {
+        target_file = create_file(target_name, target_directory);
+        append(target_file, read_from_file(source_file));
+    }
+
+    return target_file;
+}
