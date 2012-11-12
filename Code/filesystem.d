@@ -280,9 +280,12 @@ Address find_file_from_path(string[] path, Address curdir) {
     //
     // /fnul/nest/
     // '','fnul','nest',''
+    Address get_parent(Address dir) {
+        return get_file_ptr(dir).parent_block;
+    }
 
     int start = 0;
-    if (path[start] == ""){
+    if (path[start] == "") {
         // absolute path
         ++start;
         curdir = 0;
@@ -292,12 +295,18 @@ Address find_file_from_path(string[] path, Address curdir) {
     if (path[$ - 1] == "")
         --path.length;
 
-    for (int i = start; i < path.length; ++i){
-        curdir = find_file_by_name(path[i], curdir);
+    for (int i = start; i < path.length; ++i) {
+        if (path[i] == ".")
+            curdir = curdir;    // traverse to current directory
+        else if (path[i] == "..")
+            curdir = get_parent(curdir);    // traverse to parent directory
+        else {
+            curdir = find_file_by_name(path[i], curdir);    // traverse to a subdirectory/file
 
-        // check if illegal path
-        if (curdir >= BLOCK_COUNT)
-            return curdir;
+            // check if illegal path
+            if (curdir >= BLOCK_COUNT)
+                return curdir;
+        }
     }
 
     return curdir;
