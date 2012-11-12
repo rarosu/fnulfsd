@@ -213,7 +213,7 @@ int cat(string[] args) {
     string output;
 
     foreach (string arg; args) {
-        fs.Address file = fs.find_file_from_path(split(args[0], '/'), curdir);
+        fs.Address file = fs.find_file_from_path(split(arg, '/'), curdir);
         if (file >= fs.BLOCK_COUNT)
             return 1;
 
@@ -227,11 +227,18 @@ int cat(string[] args) {
 
 
 int ls(string[] args) {
+
+    fs.Address dir = curdir;
+    if (args.length > 0) {
+        string[] path = split(args[0], '/');
+        dir = fs.find_file_from_path(path, curdir);
+    }
+
     writeln(".");
-    if (curdir != 0)
+    if (dir != 0)
         writeln("..");
 
-    byte[] files = fs.read_from_file(curdir);
+    byte[] files = fs.read_from_file(dir);
     for (int i = 0; i < files.length; ++i) {
         fs.BlockHeader* bh = fs.get_block_ptr(files[i]);
         fs.FileHeader* fh = fs.get_file_ptr(files[i]);
